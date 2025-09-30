@@ -12,7 +12,6 @@ fi
 source "$PY_ENV/bin/activate"
 pip install --upgrade pip >/dev/null
 pip install -r "$API_DIR/requirements.txt"
-
 deactivate
 
 if command -v npm >/dev/null 2>&1; then
@@ -35,23 +34,34 @@ API_PID=$!
 WEB_PID=$!
 
 cleanup() {
-  kill $API_PID $WEB_PID 2>/dev/null || true
+  trap - EXIT INT TERM
+  for pid in "$API_PID" "$WEB_PID"; do
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+  wait "$API_PID" "$WEB_PID" 2>/dev/null || true
 }
-
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 sleep 2
 
-if ! kill -0 $API_PID 2>/dev/null; then
-  wait $API_PID || true
+if ! kill -0 "$API_PID" >/dev/null 2>&1; then
+  status=0
+  if ! wait "$API_PID"; then
+    status=$?
+  fi
   echo "API process exited early. Check logs above for details." >&2
-  exit 1
+  exit $status
 fi
 
-if ! kill -0 $WEB_PID 2>/dev/null; then
-  wait $WEB_PID || true
+if ! kill -0 "$WEB_PID" >/dev/null 2>&1; then
+  status=0
+  if ! wait "$WEB_PID"; then
+    status=$?
+  fi
   echo "Web process exited early. Check logs above for details." >&2
-  exit 1
+  exit $status
 fi
 
 echo "API running at http://localhost:8000"
@@ -59,17 +69,24 @@ echo "Web UI running at http://localhost:5173"
 echo "Press Ctrl+C to stop both services."
 
 while true; do
-  if ! kill -0 $API_PID 2>/dev/null; then
-    wait $API_PID
-    status=$?
+  if ! kill -0 "$API_PID" >/dev/null 2>&1; then
+    status=0
+    if ! wait "$API_PID"; then
+      status=$?
+    fi
     echo "API process exited (status $status). Shutting down." >&2
     exit $status
   fi
-  if ! kill -0 $WEB_PID 2>/dev/null; then
-    wait $WEB_PID
-    status=$?
+
+  if ! kill -0 "$WEB_PID" >/dev/null 2>&1; then
+    status=0
+    if ! wait "$WEB_PID"; then
+      status=$?
+    fi
     echo "Web process exited (status $status). Shutting down." >&2
     exit $status
   fi
+
   sleep 1
 done
+
