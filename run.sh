@@ -24,6 +24,8 @@ MSG
   exit 1
 fi
 
+echo "✅ Verified Python SSL support ($PYTHON_BIN)."
+
 if [[ ! -d "$PY_ENV" ]]; then
   "$PYTHON_BIN" -m venv "$PY_ENV"
 fi

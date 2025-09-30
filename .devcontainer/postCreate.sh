@@ -21,6 +21,8 @@ then
   exit 1
 fi
 
+echo "✅ Verified Python SSL support ($PYTHON_BIN)."
+
 chmod +x "$RUNNER" || true
 
 "$PYTHON_BIN" -m venv "$PY_ENV"

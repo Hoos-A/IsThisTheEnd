@@ -43,7 +43,7 @@ Column names must match the spec in the project prompt.
    ```bash
    ./run.sh
    ```
-   The script installs dependencies (Python + Node) and starts the API on port 8000 and the web UI on port 5173.
+   The script verifies Python SSL support, installs dependencies (Python + Node), and starts the API on port 8000 and the web UI on port 5173.
 4. **Use the app**
    - Open the browser (port 5173). Press **Record**, speak the encounter, watch transcript/entities/codes update live, run **Validate**, and **Export CSV**.
 
