@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-CERT_PATH="${API_SSL_CERT:-$ROOT_DIR/.certs/dev-cert.pem}"
-CURL_FLAGS=("-s")
-if [[ -f "$CERT_PATH" ]]; then
-  CURL_FLAGS+=("--cacert" "$CERT_PATH")
-else
-  CURL_FLAGS+=("--insecure")
+CA_CERT=".certs/dev-cert.pem"
+CURL_OPTS=()
+if [[ -f "$CA_CERT" ]]; then
+  CURL_OPTS+=(--cacert "$CA_CERT")
 fi
 
+base_url="https://localhost:8000"
+
 echo "# health"
-curl "${CURL_FLAGS[@]}" https://localhost:8000/health || true
+curl -s "$base_url/health" "${CURL_OPTS[@]}" || true
 echo
 
 echo "# HSC 03.03A"
-curl "${CURL_FLAGS[@]}" "https://localhost:8000/search?q=03.03A" || true
+curl -s "$base_url/search?q=03.03A" "${CURL_OPTS[@]}" || true
 echo
 
 echo "# DX pharyngitis"
-curl "${CURL_FLAGS[@]}" "https://localhost:8000/search?q=pharyngitis" || true
+curl -s "$base_url/search?q=pharyngitis" "${CURL_OPTS[@]}" || true
 echo

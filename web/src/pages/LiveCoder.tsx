@@ -18,8 +18,8 @@ type Counts = {
 };
 
 type HealthResponse = {
-  status: "ok" | "degraded" | "error";
-  details: string[];
+  ok: boolean;
+  message?: string;
   providers: ProviderStatus;
   counts: Counts;
   data_dir: string;
@@ -107,9 +107,10 @@ export default function LiveCoderPage() {
         setHealth(res.data);
         setHealthError(null);
       })
-      .catch(() => {
+      .catch((error) => {
+        const detail = axios.isAxiosError(error) ? error.response?.data?.detail ?? 'Unable to reach health endpoint' : 'Unable to reach health endpoint';
         setHealth(null);
-        setHealthError("Unable to reach health endpoint");
+        setHealthError(detail);
       });
   }, [apiBase]);
 
@@ -142,22 +143,17 @@ export default function LiveCoderPage() {
     if (!health) {
       return <Pill label="Status: Unknown" />;
     }
-    const statusColor =
-      health.status === "ok"
-        ? "bg-teal-100 text-teal-700"
-        : health.status === "degraded"
-        ? "bg-amber-100 text-amber-700"
-        : "bg-red-100 text-red-700";
+    const statusColor = health.ok ? "bg-teal-100 text-teal-700" : "bg-amber-100 text-amber-700";
     return (
       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>
-        Status: {health.status.toUpperCase()}
+        Status: {health.ok ? 'OK' : 'Needs setup'}
       </span>
     );
   }, [health]);
 
   const handleStart = async () => {
     if (!wsInstance) return;
-    if (health?.status === "error") {
+    if (health && !health.ok) {
       setHealthError("Datasets or credentials missing. Check Admin tab before recording.");
       return;
     }
@@ -182,7 +178,7 @@ export default function LiveCoderPage() {
   };
 
   useEffect(() => {
-    if (!combinedTranscript || health?.status === "error") return;
+    if (!combinedTranscript || (health && !health.ok)) return;
     setValidation(null);
     const fetchExtraction = async () => {
       try {
@@ -198,7 +194,7 @@ export default function LiveCoderPage() {
     };
     const debounce = setTimeout(fetchExtraction, 1000);
     return () => clearTimeout(debounce);
-  }, [combinedTranscript, apiBase, health?.status]);
+  }, [combinedTranscript, apiBase, health?.ok]);
 
   const handleValidate = async () => {
     if (!extraction || candidates.length === 0) return;
@@ -247,13 +243,11 @@ export default function LiveCoderPage() {
         </div>
       </header>
 
-      {(healthError || (health && health.details.length > 0)) && (
+      {(healthError || (health && health.message)) && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p className="font-semibold">Environment notice</p>
           <ul className="list-disc pl-6">
-            {health?.details.map((detail, idx) => (
-              <li key={idx}>{detail}</li>
-            ))}
+            {health?.message && <li>{health.message}</li>}
             {healthError && <li>{healthError}</li>}
           </ul>
         </div>
@@ -266,7 +260,7 @@ export default function LiveCoderPage() {
               <h2 className="text-lg font-semibold text-slate-800">Microphone</h2>
               <button
                 onClick={recording ? handleStop : handleStart}
-                disabled={health?.status === "error"}
+                disabled={health ? !health.ok : false}
                 className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
                   recording ? "bg-red-500 hover:bg-red-600" : "bg-teal-500 hover:bg-teal-600"
                 } disabled:cursor-not-allowed disabled:bg-slate-300`}

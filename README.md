@@ -1,117 +1,105 @@
 # AHS Billing Assistant
 
-This repository implements a microphone-first Alberta SOMB billing assistant with a FastAPI backend and a Vite/Tailwind React frontend. It ingests doctor–patient conversations, extracts structured entities via OpenAI, searches CSV fee schedules, applies deterministic rules, and surfaces citeable billing suggestions for validation and export.
+This project delivers a microphone-first Alberta SOMB billing assistant that turns spoken encounters into citeable fee-code suggestions. The stack is FastAPI + WebSockets on the backend and React + Vite + Tailwind CSS on the frontend, packaged for one-command startup in GitHub Codespaces or any workstation with Python 3.11 and Node 18.
 
-## Features
+## ✨ Features
 
-- 🎙️ **Mic-first capture** using WebSockets and Whisper transcription.
-- 🤖 **LLM extraction** with a tight system prompt driving GPT-4o mini.
-- 📁 **CSV-only storage** (no databases). All SOMB, modifier, and diagnostic datasets stay in-memory.
-- 🔍 **Hybrid retrieval + rules** ranking candidates with transparent rationale and citations.
-- ✅ **Validation** of place-of-service, effective dates, durations, and after-hours rules.
-- 📤 **CSV export** for downstream billing systems.
-- 🛡️ **Privacy-aware** by default: no audio persistence, environment-based secrets.
-- 🧰 **One-command launch** via `./run.sh` for both API and web clients.
-- 🔒 **HTTPS everywhere**: automatic self-signed certificates for local/dev and hooks for production certs.
+- 🎙️ **Mic-first capture** — stream audio to the backend over WebSockets, transcribe with Whisper, and show live partial/final transcripts.
+- 🤖 **Structured extraction** — a tightly scoped GPT-4o mini prompt turns transcripts into problems, procedures, duration, setting, and visit hints.
+- 📚 **CSV-only retrieval** — SOMB fees, modifiers, and ICD9 codes load from `/data/*.csv`, indexed in-memory for hybrid search without any database.
+- 📐 **Deterministic rules** — place-of-service, duration, after-hours, and effective/expiry constraints annotate candidates before validation.
+- ✅ **Validation + export** — review suggestions, run validation checks, and export final selections as CSV.
+- 🔒 **Privacy aware** — no audio is stored; OpenAI credentials are read from environment secrets only.
+- 🚀 **One command dev** — `./run.sh` provisions deps, ensures SSL, starts HTTPS backend/frontend, and opens the Codespaces preview.
 
-## Repository layout
+## 📂 Repository layout
 
 ```
-api/                     FastAPI backend
-web/                     React + Vite + Tailwind frontend
-scripts/                 Utility scripts
-.devcontainer/           Codespaces configuration
-.github/workflows/       Continuous integration
-run.sh                   One-shot runner
-README.md                This file
+api/                      FastAPI backend (routers, services, rules)
+web/                      React + Vite + Tailwind SPA
+scripts/                  Utility helpers (smoke tests, samples)
+.devcontainer/            Codespaces environment
+.github/workflows/        Continuous integration
+run.sh                    One-command runner (HTTPS)
+README.md                 This guide
 ```
 
-Upload CSV data files to `/data/` (ignored by git):
+Upload the following CSVs to `./data/` (gitignored):
 
 - `somb_extracted.csv`
 - `modifiers_extracted.csv`
 - `diagnostic_codes_extracted.csv`
 
-Column names must match the spec in the project prompt.
+Column names must match the spec in the project brief.
 
-## Getting started
+## 🚀 Quickstart
 
-1. **Set secrets**
-   - Add a Codespaces or environment secret named `OPENAI_API_KEY`.
-2. **Upload CSV datasets**
-   - Copy the three CSVs into `/data/`.
+1. **Codespaces secrets** – add `OPENAI_API_KEY` under *Codespaces → Secrets* (or export in your shell locally).
+2. **Upload CSVs** – drag the three required CSV files into `/data/` at the repo root.
 3. **Launch**
    ```bash
    ./run.sh
    ```
-   The script verifies Python SSL support, installs dependencies (Python + Node), generates a self-signed TLS certificate, and starts the API on **https://localhost:8000** with the web UI on **https://localhost:5173**.
-4. **Use the app**
-   - Open the browser (port 5173). Press **Record**, speak the encounter, watch transcript/entities/codes update live, run **Validate**, and **Export CSV**.
-   - The terminal prints a ready-to-copy health check command: `curl --cacert .certs/dev-cert.pem https://localhost:8000/health`.
+4. **Test health**
+   ```bash
+   curl https://localhost:8000/health --cacert .certs/dev-cert.pem
+   ```
+5. **Open the UI** – use the Codespaces port 5173 preview or `https://localhost:5173` (trust the cert once).
 
-## Development
+## 🧪 Smoke tests
 
-- **Backend**: FastAPI 0.1.0 app. Routers for health, admin, search, LLM suggestion, validation, and WebSocket streaming.
-- **Frontend**: React 18 with Tailwind styling, accessible controls, resilient WebSocket client, and mic capture via MediaRecorder.
-- **Scripts**:
-  - `scripts/smoke.sh` – hit `/health` and sample search endpoints.
-- **CI**: GitHub workflow runs backend lint/smoke (`uvicorn --version`) and frontend build (`vite build`).
-
-### HTTPS & certificates
-
-- `./run.sh` provisions `.certs/dev-cert.pem` + `.certs/dev-key.pem` with OpenSSL. Bring your own cert by setting `API_SSL_CERT` and `API_SSL_KEY` before launching.
-- Command-line checks should trust the cert: `curl --cacert .certs/dev-cert.pem https://localhost:8000/health`. In Codespaces the script opens the forwarded HTTPS URLs automatically.
-- Need a quick local smoke test? Run `./scripts/smoke.sh` which already wires in the right `--cacert` flag (falls back to `--insecure` if the dev cert is missing).
-
-### Troubleshooting
-
-- **`ssl` module missing**: If `./run.sh` prints repeated warnings like `Can't connect to HTTPS URL because the SSL module is not available`, your Python installation was built without OpenSSL support. Rebuild the Codespace (recommended) or reinstall Python with SSL (for example, on Ubuntu: `sudo apt-get install python3 python3-venv libssl-dev` and recreate the virtualenv; on macOS: `brew install python@3.11`). Once `python3 -c "import ssl"` succeeds, rerun `./run.sh`.
-- **Working offline**: set `LLM_PROVIDER=mock STT_PROVIDER=mock` before launching to use the deterministic, local mock services. The UI will still display environment notices so you remember to supply real credentials later.
-
-## Environment variables
-
-Backend configuration (via `api/config.py`):
-
-| Variable            | Default         | Description                                      |
-| ------------------- | --------------- | ------------------------------------------------ |
-| `OPENAI_API_KEY`    | _required_      | OpenAI API key (Codespaces secret)               |
-| `OPENAI_API_BASE`   | `https://api.openai.com/v1` | Optional alternate base URL           |
-| `OPENAI_MODEL_STT`  | `whisper-1`     | Whisper model name                               |
-| `OPENAI_MODEL_LLM`  | `gpt-4o-mini`   | Chat completion model                            |
-| `STT_PROVIDER`      | `openai`        | Speech-to-text provider                          |
-| `LLM_PROVIDER`      | `openai`        | LLM provider                                     |
-| `DATA_DIR`          | `../data`       | Path to CSV directory                            |
-| `API_SSL_CERT`      | _generated_     | Path to TLS certificate (set to override the dev cert) |
-| `API_SSL_KEY`       | _generated_     | Path to TLS key (set to override the dev key)    |
-| `API_SSL_CA_BUNDLE` | —               | Optional CA bundle for outbound HTTPS requests   |
-
-Frontend configuration: copy `web/.env.example` to `web/.env` and set `VITE_API_BASE` if the API origin differs.
-
-## Testing
-
-With the servers running (e.g., via `./run.sh`), execute:
+With the servers running:
 
 ```bash
 ./scripts/smoke.sh
 ```
 
-This checks `/health`, HSC lookup, and ICD search endpoints.
+Expected commands (after trusting the cert):
 
-## Privacy & security
+```
+curl https://localhost:8000/health --cacert .certs/dev-cert.pem
+curl "https://localhost:8000/search?q=03.03A" --cacert .certs/dev-cert.pem
+curl "https://localhost:8000/search?q=pharyngitis" --cacert .certs/dev-cert.pem
+```
 
-- Audio chunks are streamed live and discarded—no storage on disk.
-- Only transcript text is sent to the LLM.
-- Secrets remain outside source control and are never logged.
+## 🛠️ Development details
 
-## Accessibility
+### Backend
 
-- All interactive elements have keyboard focus styles and aria labels.
-- Table headers stay visible while scrolling; text contrast meets WCAG AA.
+- **Framework**: FastAPI (Python 3.11)
+- **Key modules**:
+  - `config.py` – environment-driven settings (OpenAI, data dir, providers).
+  - `csv_store.py` – validates/loads CSVs into dictionaries and inverted indexes.
+  - `routers/*` – REST & WebSocket endpoints (health, admin, search, LLM, streaming).
+  - `services/llm` & `services/stt` – OpenAI integrations.
+  - `retrieval/ranker.py` – token-based ranking with modifier/diagnosis attachment.
+  - `rules/engine.py` – deterministic filters and validation helpers.
 
-## Continuous integration
+### Frontend
 
-`.github/workflows/ci.yml` ensures backend and frontend builds succeed on each push.
+- **Framework**: React 18 + Vite
+- **Styling**: Tailwind CSS (medical teal palette, focus-visible states)
+- **Key components/pages**:
+  - `LiveCoder` – microphone controls, transcript pane, entities, candidate table, validation/export.
+  - `Admin` – dataset counts, CSV reload trigger.
+  - `lib/audio.ts` – MediaRecorder helper for mic chunks.
+  - `lib/ws.ts` – resilient WebSocket client with auto-reconnect.
+  - `lib/useApiBase.ts` – resolves HTTPS API origin for localhost/GitHub.dev.
 
-## License
+### Security & privacy
 
-This project is distributed under the MIT License. See `LICENSE` for details.
+- Self-signed TLS certs generated locally in `.certs/` for HTTPS dev.
+- Audio chunks are streamed and discarded (no persistence).
+- OpenAI API key is never logged; startup fails fast if required providers lack credentials.
+
+## 🧰 Devcontainer
+
+The `.devcontainer` config installs Python 3.11 + Node 18, preloads dependencies in `postCreate.sh`, and reminds you to add CSVs and secrets. Rebuild the container if dependencies break.
+
+## 📸 Screenshot
+
+After the app starts, capture a screenshot via Codespaces preview and save to `/screenshots/launch.png` (not committed).
+
+## 📜 License
+
+MIT License. See `LICENSE`.

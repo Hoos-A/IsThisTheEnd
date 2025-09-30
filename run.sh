@@ -2,42 +2,46 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_BIN="${PYTHON:-python3}"
 PY_ENV="$ROOT_DIR/.venv"
 API_DIR="$ROOT_DIR/api"
 WEB_DIR="$ROOT_DIR/web"
 CERT_DIR="$ROOT_DIR/.certs"
-DEFAULT_CERT="$CERT_DIR/dev-cert.pem"
-DEFAULT_KEY="$CERT_DIR/dev-key.pem"
+CERT_FILE="$CERT_DIR/dev-cert.pem"
+KEY_FILE="$CERT_DIR/dev-key.pem"
 
-LLM_PROVIDER="${LLM_PROVIDER:-openai}"
-STT_PROVIDER="${STT_PROVIDER:-openai}"
+log() {
+  echo "[$(date '+%H:%M:%S')] $*"
+}
 
-DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
-export DATA_DIR
-
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Python binary '$PYTHON_BIN' not found. Install Python 3.11+ and retry." >&2
-  exit 1
-fi
-
-if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
-import ssl
-PY
-  cat >&2 <<'MSG'
-Python was built without SSL support, so pip cannot reach PyPI.
-Fix this by reinstalling Python with OpenSSL enabled (e.g., rebuild your Codespace, or install python3 + libssl-dev on Linux, or `brew install python@3.11` on macOS), then rerun ./run.sh.
-See README.md for more details.
-MSG
-  exit 1
-fi
-
-echo "✅ Verified Python SSL support ($PYTHON_BIN)."
-
-if [[ "$LLM_PROVIDER" == "openai" || "$STT_PROVIDER" == "openai" ]]; then
-  if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-    echo "⚠️  OPENAI_API_KEY not set. Set Codespaces Secret OPENAI_API_KEY before running." >&2
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command '$1'." >&2
+    exit 1
   fi
+}
+
+require_command python3
+require_command openssl
+require_command npm
+
+log "Checking Python SSL support"
+if ! python3 - <<'PY'
+import ssl
+print(ssl.OPENSSL_VERSION)
+PY
+then
+  echo "Python ssl module missing. Reinstall Python 3.11 with OpenSSL support." >&2
+  exit 1
+fi
+
+mkdir -p "$CERT_DIR"
+if [[ ! -f "$CERT_FILE" || ! -f "$KEY_FILE" ]]; then
+  log "Generating self-signed TLS certificate"
+  openssl req -x509 -nodes -newkey rsa:2048 \
+    -keyout "$KEY_FILE" \
+    -out "$CERT_FILE" \
+    -days 365 \
+    -subj "/CN=localhost" >/dev/null 2>&1
 fi
 
 REQUIRED_CSVS=(
@@ -45,138 +49,77 @@ REQUIRED_CSVS=(
   "modifiers_extracted.csv"
   "diagnostic_codes_extracted.csv"
 )
-MISSING=()
+DATA_DIR="$ROOT_DIR/data"
+missing_files=()
 for csv in "${REQUIRED_CSVS[@]}"; do
   if [[ ! -f "$DATA_DIR/$csv" ]]; then
-    MISSING+=("$csv")
+    missing_files+=("$csv")
   fi
 done
+if (( ${#missing_files[@]} > 0 )); then
+  echo "Missing CSV files: ${missing_files[*]}. Upload to $DATA_DIR." >&2
+  exit 1
+fi
 
-if (( ${#MISSING[@]} > 0 )); then
-  echo "❌ Missing dataset files in $DATA_DIR:" >&2
-  for file in "${MISSING[@]}"; do
-    echo "   - $file" >&2
-  done
-  echo "Upload the CSVs listed in README.md before running the stack." >&2
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "OPENAI_API_KEY not set. Add Codespaces secret OPENAI_API_KEY." >&2
   exit 1
 fi
 
 if [[ ! -d "$PY_ENV" ]]; then
-  "$PYTHON_BIN" -m venv "$PY_ENV"
+  log "Creating Python virtual environment"
+  python3 -m venv "$PY_ENV"
 fi
 source "$PY_ENV/bin/activate"
+log "Installing Python dependencies"
 pip install --upgrade pip >/dev/null
-pip install -r "$API_DIR/requirements.txt"
+pip install -r "$API_DIR/requirements.txt" >/dev/null
 
 deactivate
 
-if command -v npm >/dev/null 2>&1; then
-  npm --prefix "$WEB_DIR" ci || npm --prefix "$WEB_DIR" install
-else
-  echo "npm not found. Please install Node.js 18+" >&2
-  exit 1
-fi
-
-mkdir -p "$CERT_DIR"
-API_CERT="${API_SSL_CERT:-$DEFAULT_CERT}"
-API_KEY="${API_SSL_KEY:-$DEFAULT_KEY}"
-
-if [[ ! -f "$API_CERT" || ! -f "$API_KEY" ]]; then
-  if ! command -v openssl >/dev/null 2>&1; then
-    echo "OpenSSL is required to generate a development certificate." >&2
-    exit 1
-  fi
-  echo "🔐 Generating self-signed TLS certificate at $CERT_DIR" >&2
-  openssl req -x509 -nodes -days 365 \
-    -newkey rsa:2048 \
-    -keyout "$API_KEY" \
-    -out "$API_CERT" \
-    -subj "/C=CA/ST=Alberta/L=Edmonton/O=AHS Billing Assistant/OU=Dev/CN=localhost" >/dev/null 2>&1
-fi
-
-export API_SSL_CERT="$API_CERT"
-export API_SSL_KEY="$API_KEY"
-export DEV_SSL_CERT="$API_CERT"
-export DEV_SSL_KEY="$API_KEY"
-
-echo "🔒 TLS certificate: $API_CERT"
+log "Installing Node dependencies"
+npm --prefix "$WEB_DIR" ci >/dev/null || npm --prefix "$WEB_DIR" install >/dev/null
 
 source "$PY_ENV/bin/activate"
+export DEV_SSL_CERT="$CERT_FILE"
+export DEV_SSL_KEY="$KEY_FILE"
+export UVICORN_SSL_CERTFILE="$CERT_FILE"
+export UVICORN_SSL_KEYFILE="$KEY_FILE"
 
-(cd "$ROOT_DIR" && uvicorn api.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile "$API_SSL_KEY" --ssl-certfile "$API_SSL_CERT") &
+log "Starting FastAPI (https://localhost:8000)"
+(
+  cd "$ROOT_DIR"
+  uvicorn api.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --ssl-certfile "$CERT_FILE" \
+    --ssl-keyfile "$KEY_FILE"
+) &
 API_PID=$!
 
-(cd "$WEB_DIR" && npm run dev -- --host 0.0.0.0 --port 5173) &
+log "Starting Vite dev server (https://localhost:5173)"
+(
+  cd "$WEB_DIR"
+  npm run dev -- --host 0.0.0.0 --port 5173 --https --cert "$CERT_FILE" --key "$KEY_FILE"
+) &
 WEB_PID=$!
 
 cleanup() {
   trap - EXIT INT TERM
-  for pid in "$API_PID" "$WEB_PID"; do
-    if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
-      kill "$pid" >/dev/null 2>&1 || true
-    fi
-  done
+  log "Shutting down services"
+  kill "$API_PID" "$WEB_PID" >/dev/null 2>&1 || true
   wait "$API_PID" "$WEB_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-sleep 2
+sleep 3
 
-if ! kill -0 "$API_PID" >/dev/null 2>&1; then
-  status=0
-  if ! wait "$API_PID"; then
-    status=$?
-  fi
-  echo "API process exited early. Check logs above for details." >&2
-  exit $status
+if command -v gp >/dev/null 2>&1; then
+  gp preview --external 5173 >/dev/null 2>&1 || true
 fi
 
-if ! kill -0 "$WEB_PID" >/dev/null 2>&1; then
-  status=0
-  if ! wait "$WEB_PID"; then
-    status=$?
-  fi
-  echo "Web process exited early. Check logs above for details." >&2
-  exit $status
-fi
+log "API running at https://localhost:8000"
+log "Web UI running at https://localhost:5173"
+log "Press Ctrl+C to stop both services."
 
-open_browser() {
-  local local_url="https://localhost:5173"
-  if [[ -n "${CODESPACE_NAME:-}" ]] && command -v gp >/dev/null 2>&1; then
-    echo "🌐 Opening Codespaces preview (port 5173)." >&2
-    (gp preview --external 5173 >/dev/null 2>&1 &) || true
-    echo "API running at https://${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
-    echo "Web UI running at https://${CODESPACE_NAME}-5173.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
-    return
-  fi
-
-  if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    ("$PYTHON_BIN" -m webbrowser "$local_url" >/dev/null 2>&1 &) || true
-  fi
-  echo "API running at https://localhost:8000"
-  echo "Web UI running at $local_url"
-}
-
-open_browser
-echo "Press Ctrl+C to stop both services."
-echo "Health check: curl --cacert $API_SSL_CERT https://localhost:8000/health"
-
-while true; do
-  if ! kill -0 "$API_PID" >/dev/null 2>&1; then
-    status=0
-    if ! wait "$API_PID"; then
-      status=$?
-    fi
-    echo "API process exited (status $status). Shutting down." >&2
-    exit $status
-  fi
-  if ! kill -0 "$WEB_PID" >/dev/null 2>&1; then
-    status=0
-    if ! wait "$WEB_PID"; then
-      status=$?
-    fi
-    echo "Web process exited (status $status). Shutting down." >&2
-    exit $status
-  fi
-  sleep 1
-done
+wait

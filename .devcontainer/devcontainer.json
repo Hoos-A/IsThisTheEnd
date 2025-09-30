@@ -8,6 +8,11 @@
       "version": "18"
     }
   },
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "forwardPorts": [8000, 5173],
-  "postCreateCommand": "bash .devcontainer/postCreate.sh"
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["README.md"]
+    }
+  }
 }
