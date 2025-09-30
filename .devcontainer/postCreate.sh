@@ -16,7 +16,6 @@ fi
 if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
 import ssl
 PY
-then
   echo "Python lacks SSL support; rebuild the Codespace or install libssl and recreate the environment." >&2
   exit 1
 fi
