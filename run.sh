@@ -15,7 +15,6 @@ fi
 if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
 import ssl
 PY
-then
   cat >&2 <<'MSG'
 Python was built without SSL support, so pip cannot reach PyPI.
 Fix this by reinstalling Python with OpenSSL enabled (e.g., rebuild your Codespace, or install python3 + libssl-dev on Linux, or `brew install python@3.11` on macOS), then rerun ./run.sh.
