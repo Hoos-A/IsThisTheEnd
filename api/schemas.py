@@ -19,11 +19,11 @@ class Counts(BaseModel):
 
 
 class HealthStatus(BaseModel):
-    ok: bool
+    status: Literal["ok", "degraded", "error"]
+    details: List[str] = Field(default_factory=list)
     providers: ProviderStatus
     counts: Counts
     data_dir: str
-    message: Optional[str] = None
 
 
 class SearchResult(BaseModel):

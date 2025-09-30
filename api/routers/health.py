@@ -1,7 +1,9 @@
 """Health and readiness endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Literal, cast
+
+from fastapi import APIRouter
 
 from .. import csv_store
 from ..config import settings
@@ -17,17 +19,27 @@ async def get_health() -> HealthStatus:
         modifiers=len(csv_store.mod_by_code),
         icd9=len(csv_store.icd_by_code),
     )
-    ok = bool(counts.hsc and counts.modifiers and counts.icd9)
-    message = None
+    issues: list[str] = []
+
+    if not counts.hsc or not counts.modifiers or not counts.icd9:
+        issues.append("Upload CSVs to /data (see README: column names).")
+
     if settings.require_openai_key and not settings.openai_api_key:
-        message = "Set Codespaces Secret OPENAI_API_KEY"
-        ok = False
-    if not ok and not csv_store.hsc_by_code:
-        message = "Upload CSVs to /data (see README: column names)."
-    if not ok:
-        raise HTTPException(status_code=503, detail=message or "Service unavailable")
+        issues.append("Set Codespaces Secret OPENAI_API_KEY")
+
+    status: str
+    if not issues:
+        status = "ok"
+    elif counts.hsc and counts.modifiers and counts.icd9:
+        status = "degraded"
+    else:
+        status = "error"
+
+    literal_status = cast(Literal["ok", "degraded", "error"], status)
+
     return HealthStatus(
-        ok=True,
+        status=literal_status,
+        details=issues,
         providers=ProviderStatus(stt=settings.stt_provider, llm=settings.llm_provider),
         counts=counts,
         data_dir=str(settings.data_dir),

@@ -8,8 +8,9 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from ..config import settings
 from ..schemas import WsCodesUpdate, WsSttFinal, WsSttPartial
-from ..services.stt import openai_stt
+from ..services.stt import mock_stt, openai_stt
 from .llm_codes import suggest_for_ws
 
 router = APIRouter(prefix="", tags=["stream"])
@@ -39,7 +40,8 @@ async def stream_endpoint(websocket: WebSocket) -> None:
                 elif event_type == "audio_stop":
                     audio_bytes = b"".join(audio_chunks)
                     start = time.perf_counter()
-                    stt_response = await openai_stt.transcribe(audio_bytes, sample_rate, encoding)
+                    transcriber = mock_stt if settings.stt_provider.lower() == "mock" else openai_stt
+                    stt_response = await transcriber.transcribe(audio_bytes, sample_rate, encoding)
                     text = stt_response.get("text", "")
                     transcript_accum.append(text)
                     elapsed = int((time.perf_counter() - session_start) * 1000)
@@ -66,4 +68,9 @@ async def stream_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+        except Exception:  # pragma: no cover - defensive cleanup
+            pass

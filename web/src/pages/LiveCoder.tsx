@@ -18,6 +18,8 @@ type Counts = {
 };
 
 type HealthResponse = {
+  status: "ok" | "degraded" | "error";
+  details: string[];
   providers: ProviderStatus;
   counts: Counts;
   data_dir: string;
@@ -87,6 +89,7 @@ function formatDuration(duration: number | null) {
 export default function LiveCoderPage() {
   const apiBase = useApiBase();
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [partial, setPartial] = useState("");
   const [extraction, setExtraction] = useState<Extraction | null>(null);
@@ -100,8 +103,14 @@ export default function LiveCoderPage() {
   useEffect(() => {
     axios
       .get<HealthResponse>(`${apiBase}/health`)
-      .then((res) => setHealth(res.data))
-      .catch(() => setHealth(null));
+      .then((res) => {
+        setHealth(res.data);
+        setHealthError(null);
+      })
+      .catch(() => {
+        setHealth(null);
+        setHealthError("Unable to reach health endpoint");
+      });
   }, [apiBase]);
 
   useEffect(() => {
@@ -129,8 +138,29 @@ export default function LiveCoderPage() {
 
   const combinedTranscript = useMemo(() => [...transcript, partial].filter(Boolean).join("\n"), [transcript, partial]);
 
+  const statusBadge = useMemo(() => {
+    if (!health) {
+      return <Pill label="Status: Unknown" />;
+    }
+    const statusColor =
+      health.status === "ok"
+        ? "bg-teal-100 text-teal-700"
+        : health.status === "degraded"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-red-100 text-red-700";
+    return (
+      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>
+        Status: {health.status.toUpperCase()}
+      </span>
+    );
+  }, [health]);
+
   const handleStart = async () => {
     if (!wsInstance) return;
+    if (health?.status === "error") {
+      setHealthError("Datasets or credentials missing. Check Admin tab before recording.");
+      return;
+    }
     setTranscript([]);
     setPartial("");
     setExtraction(null);
@@ -152,7 +182,7 @@ export default function LiveCoderPage() {
   };
 
   useEffect(() => {
-    if (!combinedTranscript) return;
+    if (!combinedTranscript || health?.status === "error") return;
     setValidation(null);
     const fetchExtraction = async () => {
       try {
@@ -168,7 +198,7 @@ export default function LiveCoderPage() {
     };
     const debounce = setTimeout(fetchExtraction, 1000);
     return () => clearTimeout(debounce);
-  }, [combinedTranscript, apiBase]);
+  }, [combinedTranscript, apiBase, health?.status]);
 
   const handleValidate = async () => {
     if (!extraction || candidates.length === 0) return;
@@ -210,11 +240,24 @@ export default function LiveCoderPage() {
           <p className="text-sm text-slate-500">Capture the patient encounter, surface codes, validate, and export.</p>
         </div>
         <div className="flex items-center gap-2">
+          {statusBadge}
           <Pill label={`STT: ${health?.providers.stt ?? "?"}`} />
           <Pill label={`LLM: ${health?.providers.llm ?? "?"}`} />
           <Pill label={`Data: ${health?.counts.hsc ?? 0} HSC / ${health?.counts.modifiers ?? 0} Mod / ${health?.counts.icd9 ?? 0} ICD`} />
         </div>
       </header>
+
+      {(healthError || (health && health.details.length > 0)) && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-semibold">Environment notice</p>
+          <ul className="list-disc pl-6">
+            {health?.details.map((detail, idx) => (
+              <li key={idx}>{detail}</li>
+            ))}
+            {healthError && <li>{healthError}</li>}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex-1 space-y-4">
@@ -223,9 +266,10 @@ export default function LiveCoderPage() {
               <h2 className="text-lg font-semibold text-slate-800">Microphone</h2>
               <button
                 onClick={recording ? handleStop : handleStart}
+                disabled={health?.status === "error"}
                 className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
                   recording ? "bg-red-500 hover:bg-red-600" : "bg-teal-500 hover:bg-teal-600"
-                }`}
+                } disabled:cursor-not-allowed disabled:bg-slate-300`}
                 aria-pressed={recording}
                 aria-label={recording ? "Stop recording" : "Start recording"}
               >

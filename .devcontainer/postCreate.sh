@@ -32,11 +32,11 @@ pip install -r "$API_DIR/requirements.txt"
 
 deactivate
 
-npm --prefix "$WEB_DIR" install
+npm --prefix "$WEB_DIR" ci || npm --prefix "$WEB_DIR" install
 
 cat <<'MSG'
 🚀 Codespace ready.
 - Upload CSVs to /data (somb_extracted.csv, modifiers_extracted.csv, diagnostic_codes_extracted.csv)
-- Set Codespaces secret OPENAI_API_KEY
-- Run ./run.sh to start API + web
+- Set Codespaces secret OPENAI_API_KEY (or export LLM_PROVIDER=mock/STT_PROVIDER=mock for offline mode)
+- Run ./run.sh to start API + web (auto-generates https:// certs for 8000 & 5173)
 MSG

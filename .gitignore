@@ -10,6 +10,8 @@ node_modules/
 web/node_modules/
 web/dist/
 api/.python-version
+.certs/
+screenshots/
 .data/
 data/
 /data/

@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -18,6 +22,9 @@ class Settings:
     stt_provider: str
     llm_provider: str
     data_dir: Path
+    ssl_certfile: Optional[Path]
+    ssl_keyfile: Optional[Path]
+    ssl_ca_bundle: Optional[Path]
 
     @property
     def require_openai_key(self) -> bool:
@@ -25,6 +32,12 @@ class Settings:
             provider == "openai"
             for provider in (self.stt_provider.lower(), self.llm_provider.lower())
         )
+
+
+def _optional_path(value: Optional[str]) -> Optional[Path]:
+    if not value:
+        return None
+    return Path(value).expanduser().resolve()
 
 
 def get_settings() -> Settings:
@@ -37,6 +50,9 @@ def get_settings() -> Settings:
         stt_provider=os.getenv("STT_PROVIDER", "openai"),
         llm_provider=os.getenv("LLM_PROVIDER", "openai"),
         data_dir=data_dir,
+        ssl_certfile=_optional_path(os.getenv("API_SSL_CERT")),
+        ssl_keyfile=_optional_path(os.getenv("API_SSL_KEY")),
+        ssl_ca_bundle=_optional_path(os.getenv("API_SSL_CA_BUNDLE")),
     )
     return settings
 

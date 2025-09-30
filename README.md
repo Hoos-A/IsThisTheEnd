@@ -12,6 +12,7 @@ This repository implements a microphone-first Alberta SOMB billing assistant wit
 - 📤 **CSV export** for downstream billing systems.
 - 🛡️ **Privacy-aware** by default: no audio persistence, environment-based secrets.
 - 🧰 **One-command launch** via `./run.sh` for both API and web clients.
+- 🔒 **HTTPS everywhere**: automatic self-signed certificates for local/dev and hooks for production certs.
 
 ## Repository layout
 
@@ -43,9 +44,10 @@ Column names must match the spec in the project prompt.
    ```bash
    ./run.sh
    ```
-   The script verifies Python SSL support, installs dependencies (Python + Node), and starts the API on port 8000 and the web UI on port 5173.
+   The script verifies Python SSL support, installs dependencies (Python + Node), generates a self-signed TLS certificate, and starts the API on **https://localhost:8000** with the web UI on **https://localhost:5173**.
 4. **Use the app**
    - Open the browser (port 5173). Press **Record**, speak the encounter, watch transcript/entities/codes update live, run **Validate**, and **Export CSV**.
+   - The terminal prints a ready-to-copy health check command: `curl --cacert .certs/dev-cert.pem https://localhost:8000/health`.
 
 ## Development
 
@@ -55,9 +57,16 @@ Column names must match the spec in the project prompt.
   - `scripts/smoke.sh` – hit `/health` and sample search endpoints.
 - **CI**: GitHub workflow runs backend lint/smoke (`uvicorn --version`) and frontend build (`vite build`).
 
+### HTTPS & certificates
+
+- `./run.sh` provisions `.certs/dev-cert.pem` + `.certs/dev-key.pem` with OpenSSL. Bring your own cert by setting `API_SSL_CERT` and `API_SSL_KEY` before launching.
+- Command-line checks should trust the cert: `curl --cacert .certs/dev-cert.pem https://localhost:8000/health`. In Codespaces the script opens the forwarded HTTPS URLs automatically.
+- Need a quick local smoke test? Run `./scripts/smoke.sh` which already wires in the right `--cacert` flag (falls back to `--insecure` if the dev cert is missing).
+
 ### Troubleshooting
 
 - **`ssl` module missing**: If `./run.sh` prints repeated warnings like `Can't connect to HTTPS URL because the SSL module is not available`, your Python installation was built without OpenSSL support. Rebuild the Codespace (recommended) or reinstall Python with SSL (for example, on Ubuntu: `sudo apt-get install python3 python3-venv libssl-dev` and recreate the virtualenv; on macOS: `brew install python@3.11`). Once `python3 -c "import ssl"` succeeds, rerun `./run.sh`.
+- **Working offline**: set `LLM_PROVIDER=mock STT_PROVIDER=mock` before launching to use the deterministic, local mock services. The UI will still display environment notices so you remember to supply real credentials later.
 
 ## Environment variables
 
@@ -72,6 +81,9 @@ Backend configuration (via `api/config.py`):
 | `STT_PROVIDER`      | `openai`        | Speech-to-text provider                          |
 | `LLM_PROVIDER`      | `openai`        | LLM provider                                     |
 | `DATA_DIR`          | `../data`       | Path to CSV directory                            |
+| `API_SSL_CERT`      | _generated_     | Path to TLS certificate (set to override the dev cert) |
+| `API_SSL_KEY`       | _generated_     | Path to TLS key (set to override the dev key)    |
+| `API_SSL_CA_BUNDLE` | —               | Optional CA bundle for outbound HTTPS requests   |
 
 Frontend configuration: copy `web/.env.example` to `web/.env` and set `VITE_API_BASE` if the API origin differs.
 

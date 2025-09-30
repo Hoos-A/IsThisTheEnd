@@ -28,7 +28,8 @@ async def transcribe(audio_bytes: bytes, sample_rate: int, encoding: str) -> Dic
         "model": settings.openai_model_stt,
         "response_format": "verbose_json",
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    verify = settings.ssl_ca_bundle if settings.ssl_ca_bundle else True
+    async with httpx.AsyncClient(timeout=60.0, verify=verify) as client:
         response = await client.post(
             f"{base_url}/audio/transcriptions",
             headers=headers,
