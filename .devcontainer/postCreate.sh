@@ -3,13 +3,27 @@ set -euo pipefail
 
 ROOT_DIR="${CODESPACE_VSCODE_FOLDER:-$(pwd)}"
 RUNNER="$ROOT_DIR/run.sh"
+PYTHON_BIN="${PYTHON:-python3}"
 PY_ENV="$ROOT_DIR/.venv"
 WEB_DIR="$ROOT_DIR/web"
 API_DIR="$ROOT_DIR/api"
 
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "Python binary '$PYTHON_BIN' not found. Install Python 3.11+ in the devcontainer image." >&2
+  exit 1
+fi
+
+if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
+import ssl
+PY
+then
+  echo "Python lacks SSL support; rebuild the Codespace or install libssl and recreate the environment." >&2
+  exit 1
+fi
+
 chmod +x "$RUNNER" || true
 
-python3 -m venv "$PY_ENV"
+"$PYTHON_BIN" -m venv "$PY_ENV"
 source "$PY_ENV/bin/activate"
 pip install --upgrade pip
 pip install -r "$API_DIR/requirements.txt"

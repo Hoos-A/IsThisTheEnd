@@ -2,12 +2,30 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON_BIN="${PYTHON:-python3}"
 PY_ENV="$ROOT_DIR/.venv"
 API_DIR="$ROOT_DIR/api"
 WEB_DIR="$ROOT_DIR/web"
 
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "Python binary '$PYTHON_BIN' not found. Install Python 3.11+ and retry." >&2
+  exit 1
+fi
+
+if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
+import ssl
+PY
+then
+  cat >&2 <<'MSG'
+Python was built without SSL support, so pip cannot reach PyPI.
+Fix this by reinstalling Python with OpenSSL enabled (e.g., rebuild your Codespace, or install python3 + libssl-dev on Linux, or `brew install python@3.11` on macOS), then rerun ./run.sh.
+See README.md for more details.
+MSG
+  exit 1
+fi
+
 if [[ ! -d "$PY_ENV" ]]; then
-  python3 -m venv "$PY_ENV"
+  "$PYTHON_BIN" -m venv "$PY_ENV"
 fi
 source "$PY_ENV/bin/activate"
 pip install --upgrade pip >/dev/null

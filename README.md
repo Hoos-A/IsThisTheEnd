@@ -55,6 +55,10 @@ Column names must match the spec in the project prompt.
   - `scripts/smoke.sh` – hit `/health` and sample search endpoints.
 - **CI**: GitHub workflow runs backend lint/smoke (`uvicorn --version`) and frontend build (`vite build`).
 
+### Troubleshooting
+
+- **`ssl` module missing**: If `./run.sh` prints repeated warnings like `Can't connect to HTTPS URL because the SSL module is not available`, your Python installation was built without OpenSSL support. Rebuild the Codespace (recommended) or reinstall Python with SSL (for example, on Ubuntu: `sudo apt-get install python3 python3-venv libssl-dev` and recreate the virtualenv; on macOS: `brew install python@3.11`). Once `python3 -c "import ssl"` succeeds, rerun `./run.sh`.
+
 ## Environment variables
 
 Backend configuration (via `api/config.py`):
